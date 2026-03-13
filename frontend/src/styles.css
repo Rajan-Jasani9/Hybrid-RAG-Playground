@@ -112,6 +112,18 @@ select.field-input {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
 }
 
 .sidebar-subtitle {
@@ -222,6 +234,12 @@ select.field-input {
   margin: 0 0 14px;
 }
 
+.panel-warning {
+  font-size: 0.78rem;
+  color: var(--danger);
+  margin: 0 0 10px;
+}
+
 .upload-area {
   border-radius: var(--radius-md);
   border: 1px dashed #374151;
@@ -259,6 +277,61 @@ select.field-input {
 .upload-hint {
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.ingestion-list {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #111827;
+}
+
+.ingestion-list-header {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.ingestion-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ingestion-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.ingestion-filename {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ingestion-status {
+  text-transform: capitalize;
+}
+
+.ingestion-status-queued {
+  color: #facc15;
+}
+
+.ingestion-status-processing {
+  color: #38bdf8;
+}
+
+.ingestion-status-completed {
+  color: #22c55e;
+}
+
+.ingestion-status-failed {
+  color: var(--danger);
 }
 
 .field-group {

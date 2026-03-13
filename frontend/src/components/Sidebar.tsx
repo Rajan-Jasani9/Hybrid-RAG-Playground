@@ -1,8 +1,11 @@
 import React, { useState } from "react";
-import { RetrievalMode } from "../App";
+import { Microscope } from "lucide-react";
+import { RetrievalMode, IngestedDocument } from "../App";
 
 interface SidebarProps {
   onFilesUploaded: (files: FileList | null) => void;
+  isUploading: boolean;
+  documents: IngestedDocument[];
   selectedModelFamily: string;
   onChangeModelFamily: (value: string) => void;
   selectedModel: string;
@@ -19,6 +22,8 @@ type Tab = "data" | "config";
 
 export const Sidebar: React.FC<SidebarProps> = ({
   onFilesUploaded,
+  isUploading,
+  documents,
   selectedModelFamily,
   onChangeModelFamily,
   selectedModel,
@@ -35,7 +40,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1 className="sidebar-title">RAG Playground</h1>
+        <h1 className="sidebar-title">
+          <span className="sidebar-logo">
+            <Microscope size={18} strokeWidth={2} />
+          </span>
+          <span>RAG Playground</span>
+        </h1>
         <p className="sidebar-subtitle">Data &amp; Configuration</p>
       </div>
 
@@ -61,6 +71,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <p className="panel-description">
               Upload one or more files to index into the Hybrid RAG backend.
             </p>
+            <p className="panel-warning">
+              Note: This version does not currently support OCR. Only embedded text in
+              PDF/DOC/DOCX/TXT files will be indexed.
+            </p>
 
             <label className="upload-area">
               <input
@@ -68,10 +82,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 accept=".pdf,.doc,.docx,.txt"
                 multiple
                 onChange={(e) => onFilesUploaded(e.target.files)}
+                disabled={isUploading}
               />
-              <span className="upload-title">Drop files here or click to browse</span>
+              <span className="upload-title">
+                {isUploading ? "Uploading & queuing..." : "Drop files here or click to browse"}
+              </span>
               <span className="upload-hint">Supported: PDF, DOC, DOCX, TXT</span>
             </label>
+
+            {documents.length > 0 && (
+              <div className="ingestion-list">
+                <div className="ingestion-list-header">
+                  <span>Recent ingestions</span>
+                </div>
+                <ul>
+                  {documents.slice(-5).map((doc) => (
+                    <li key={doc.id} className="ingestion-list-item">
+                      <span className="ingestion-filename" title={doc.filename}>
+                        {doc.filename}
+                      </span>
+                      <span className={`ingestion-status ingestion-status-${doc.status}`}>
+                        {doc.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
           <>

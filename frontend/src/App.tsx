@@ -16,6 +16,12 @@ export interface RetrievedChunk {
   text: string;
 }
 
+export interface IngestedDocument {
+  id: string;
+  filename: string;
+  status: "queued" | "processing" | "completed" | "failed";
+}
+
 const App: React.FC = () => {
   const [hasData, setHasData] = useState(false);
   const [selectedModelFamily, setSelectedModelFamily] = useState<string>("");
@@ -25,6 +31,8 @@ const App: React.FC = () => {
   const [chunks, setChunks] = useState<RetrievedChunk[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [documents, setDocuments] = useState<IngestedDocument[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (theme === "dark") {
@@ -34,9 +42,48 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
-  const handleFilesUploaded = (files: FileList | null) => {
-    if (files && files.length > 0) {
-      setHasData(true);
+  const handleFilesUploaded = async (files: FileList | null) => {
+    if (!files || files.length === 0 || isUploading) return;
+
+    const formData = new FormData();
+    Array.from(files).forEach((file) => {
+      formData.append("files", file);
+    });
+
+    try {
+      setIsUploading(true);
+      const resp = await fetch("http://localhost:8000/api/ingest/batch", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        console.error("Ingestion failed", await resp.text());
+        return;
+      }
+
+      const data = await resp.json();
+      const items = (data.items ?? []) as {
+        filename: string;
+        document_id: string;
+        status: "queued" | "processing" | "completed" | "failed";
+      }[];
+
+      if (items.length > 0) {
+        setHasData(true);
+        setDocuments((prev) => [
+          ...prev,
+          ...items.map((item) => ({
+            id: item.document_id,
+            filename: item.filename,
+            status: item.status,
+          })),
+        ]);
+      }
+    } catch (err) {
+      console.error("Error uploading files", err);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -65,6 +112,8 @@ const App: React.FC = () => {
     <div className="app-root">
       <Sidebar
         onFilesUploaded={handleFilesUploaded}
+        isUploading={isUploading}
+        documents={documents}
         selectedModelFamily={selectedModelFamily}
         onChangeModelFamily={setSelectedModelFamily}
         selectedModel={selectedModel}

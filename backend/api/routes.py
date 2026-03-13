@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models.document import Document
 from app.services.ingestion.queue import enqueue_ingestion_task
+from retrieval.base import RetrievalRequest, RetrievalResponse, RetrievalMode
+from retrieval.vector import semantic_search
+from retrieval.bm25 import keyword_search
+from retrieval.hybrid import hybrid_search
+from retrieval.rerank import semantic_mmr_rerank
 
 router = APIRouter()
 
@@ -55,6 +60,60 @@ async def ingest_file(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/retrieve", response_model=RetrievalResponse)
+async def retrieve(
+    body: RetrievalRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Unified retrieval endpoint supporting:
+      - semantic (pgvector)
+      - keyword (Elasticsearch BM25)
+      - hybrid (fusion)
+      - semantic_mmr (semantic + basic MMR placeholder)
+    """
+
+    if not body.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    if body.mode == RetrievalMode.SEMANTIC:
+        chunks = await semantic_search(
+            db=db,
+            query=body.query,
+            top_k=body.top_k,
+            document_ids=body.document_ids,
+        )
+    elif body.mode == RetrievalMode.KEYWORD:
+        chunks = keyword_search(
+            query=body.query,
+            top_k=body.top_k,
+            document_ids=body.document_ids,
+        )
+    elif body.mode == RetrievalMode.HYBRID:
+        chunks = await hybrid_search(
+            db=db,
+            query=body.query,
+            top_k=body.top_k,
+            document_ids=body.document_ids,
+        )
+    elif body.mode == RetrievalMode.SEMANTIC_MMR:
+        base_chunks = await semantic_search(
+            db=db,
+            query=body.query,
+            top_k=body.top_k * 3,
+            document_ids=body.document_ids,
+        )
+        chunks = semantic_mmr_rerank(base_chunks, top_k=body.top_k)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported mode: {body.mode}")
+
+    return RetrievalResponse(
+        mode=body.mode,
+        top_k=body.top_k,
+        chunks=chunks,
+    )
 
 
 @router.post("/ingest/batch")
