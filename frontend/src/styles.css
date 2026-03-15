@@ -80,10 +80,15 @@ select.field-input {
 
 .app-root {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 0;
+  grid-template-columns: 260px minmax(0, 1fr);
   grid-template-rows: 100vh;
   background: var(--bg);
   color: var(--text-primary);
+  position: relative;
+}
+
+.app-root.drawer-open {
+  grid-template-columns: 260px minmax(0, 1fr) 360px;
 }
 
 .app-main {
@@ -240,49 +245,41 @@ select.field-input {
   margin: 0 0 10px;
 }
 
-.upload-area {
+.upload-button-wrapper {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.upload-button {
+  width: 100%;
   border-radius: var(--radius-md);
-  border: 1px dashed #374151;
-  padding: 18px 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
   cursor: pointer;
-  background: var(--bg-elevated);
-  transition: border-color var(--transition-fast), background var(--transition-fast),
-    transform var(--transition-fast), box-shadow var(--transition-fast);
-  position: relative;
-  overflow: hidden;
+  transition: background var(--transition-fast), opacity var(--transition-fast),
+    transform var(--transition-fast);
+  box-shadow: var(--shadow-subtle);
 }
 
-.upload-area input[type="file"] {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.upload-area:hover {
-  border-color: var(--accent);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.8);
+.upload-button:hover:not(:disabled) {
+  background: var(--accent-strong);
   transform: translateY(-1px);
 }
 
-.upload-title {
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.upload-hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.upload-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ingestion-list {
-  margin-top: 12px;
-  padding-top: 8px;
-  border-top: 1px solid #111827;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .ingestion-list-header {
@@ -298,6 +295,15 @@ select.field-input {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ingestion-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  font-style: italic;
 }
 
 .ingestion-list-item {
@@ -305,13 +311,22 @@ select.field-input {
   justify-content: space-between;
   align-items: center;
   font-size: 0.75rem;
+  gap: 8px;
 }
 
 .ingestion-filename {
-  max-width: 160px;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ingestion-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .ingestion-status {
@@ -332,6 +347,32 @@ select.field-input {
 
 .ingestion-status-failed {
   color: var(--danger);
+}
+
+.ingestion-delete-button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.ingestion-delete-button:hover {
+  background: var(--bg-elevated-soft);
+  color: var(--danger);
+}
+
+.ingestion-delete-button:active {
+  transform: scale(0.95);
 }
 
 .field-group {
@@ -532,8 +573,11 @@ select.field-input {
 /* Result drawer */
 
 .result-drawer {
-  position: relative;
+  position: fixed;
+  top: 0;
+  right: 0;
   width: 360px;
+  height: 100vh;
   border-left: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
   padding: 12px 12px 14px;
@@ -541,11 +585,19 @@ select.field-input {
   transform: translateX(100%);
   opacity: 0;
   transition: transform var(--transition-med), opacity var(--transition-med);
+  z-index: 30;
+  overflow-y: auto;
 }
 
 .result-drawer.open {
   transform: translateX(0);
   opacity: 1;
+}
+
+/* When drawer is open, use grid layout for better integration */
+.app-root.drawer-open .result-drawer {
+  position: relative;
+  z-index: 1;
 }
 
 .result-drawer-header {
@@ -629,20 +681,92 @@ select.field-input {
   line-height: 1.4;
 }
 
-/* Layout tweaks for drawer */
+/* Toast notifications */
 
-@media (min-width: 1200px) {
-  .app-root {
-    grid-template-columns: 260px minmax(0, 1fr) 360px;
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 400px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+  animation: toast-slide-in 0.3s ease-out;
+  min-width: 300px;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 
+.toast-message {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.toast-success {
+  border-left: 3px solid #22c55e;
+}
+
+.toast-error {
+  border-left: 3px solid var(--danger);
+}
+
+.toast-info {
+  border-left: 3px solid #38bdf8;
+}
+
+.toast-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  background: var(--bg-elevated-soft);
+  color: var(--text-primary);
+}
+
+/* Layout tweaks for drawer */
+
 @media (max-width: 1024px) {
-  .app-root {
+  .app-root.drawer-open {
     grid-template-columns: 260px minmax(0, 1fr);
   }
 
-  .result-drawer {
+  .app-root.drawer-open .result-drawer {
     position: fixed;
     inset: 0 0 0 auto;
     max-width: 360px;

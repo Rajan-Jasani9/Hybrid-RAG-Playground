@@ -1,5 +1,5 @@
 import React from "react";
-import { RetrievedChunk } from "../App";
+import { RetrievedChunk } from "../services/api";
 
 interface ResultDrawerProps {
   open: boolean;

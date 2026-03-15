@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { RetrievalMode } from "../App";
+import { RetrievalMode } from "../services/api";
 
 interface ChatAreaProps {
   hasData: boolean;
   retrievalMode: RetrievalMode;
-  onRunRetrieval: (query: string) => void;
+  onRunRetrieval: (query: string) => void | Promise<void>;
   hasChatModel: boolean;
 }
 

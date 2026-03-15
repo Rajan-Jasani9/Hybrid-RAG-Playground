@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Microscope } from "lucide-react";
-import { RetrievalMode, IngestedDocument } from "../App";
+import { RetrievalMode, IngestedDocument } from "../services/api";
 
 interface SidebarProps {
   onFilesUploaded: (files: FileList | null) => void;
   isUploading: boolean;
   documents: IngestedDocument[];
+  onDeleteDocument: (documentId: string) => void;
   selectedModelFamily: string;
   onChangeModelFamily: (value: string) => void;
   selectedModel: string;
@@ -24,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onFilesUploaded,
   isUploading,
   documents,
+  onDeleteDocument,
   selectedModelFamily,
   onChangeModelFamily,
   selectedModel,
@@ -36,6 +38,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>("data");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    onFilesUploaded(files);
+    // Reset the input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -71,44 +87,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <p className="panel-description">
               Upload one or more files to index into the Hybrid RAG backend.
             </p>
-            <p className="panel-warning">
-              Note: This version does not currently support OCR. Only embedded text in
-              PDF/DOC/DOCX/TXT files will be indexed.
-            </p>
 
-            <label className="upload-area">
+            <div className="upload-button-wrapper">
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".pdf,.doc,.docx,.txt"
                 multiple
-                onChange={(e) => onFilesUploaded(e.target.files)}
+                onChange={handleFileChange}
                 disabled={isUploading}
+                style={{ display: "none" }}
               />
-              <span className="upload-title">
-                {isUploading ? "Uploading & queuing..." : "Drop files here or click to browse"}
-              </span>
-              <span className="upload-hint">Supported: PDF, DOC, DOCX, TXT</span>
-            </label>
+              <button
+                type="button"
+                className="upload-button"
+                disabled={isUploading}
+                onClick={handleUploadClick}
+              >
+                {isUploading ? "Uploading..." : "Upload files"}
+              </button>
+            </div>
 
-            {documents.length > 0 && (
-              <div className="ingestion-list">
-                <div className="ingestion-list-header">
-                  <span>Recent ingestions</span>
-                </div>
+            <div className="ingestion-list">
+              <div className="ingestion-list-header">
+                <span>Uploaded documents ({documents.length})</span>
+              </div>
+              {documents.length > 0 ? (
                 <ul>
-                  {documents.slice(-5).map((doc) => (
+                  {documents.map((doc) => (
                     <li key={doc.id} className="ingestion-list-item">
                       <span className="ingestion-filename" title={doc.filename}>
                         {doc.filename}
                       </span>
-                      <span className={`ingestion-status ingestion-status-${doc.status}`}>
-                        {doc.status}
-                      </span>
+                      <div className="ingestion-item-actions">
+                        <span className={`ingestion-status ingestion-status-${doc.status}`}>
+                          {doc.status}
+                        </span>
+                        <button
+                          type="button"
+                          className="ingestion-delete-button"
+                          onClick={() => onDeleteDocument(doc.id)}
+                          title="Delete document"
+                          aria-label={`Delete ${doc.filename}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
+              ) : (
+                <p className="ingestion-empty">No documents uploaded yet</p>
+              )}
+            </div>
           </div>
         ) : (
           <>
