@@ -31,9 +31,11 @@ export const ResultDrawer: React.FC<ResultDrawerProps> = ({
             <li key={chunk.id} className="result-item">
               <div className="result-meta">
                 <span className="result-doc-id">{chunk.documentId}</span>
-                <span className="result-score">
-                  Score: {chunk.score.toFixed(3)}
-                </span>
+                {chunk.score !== undefined && chunk.score !== null && (
+                  <span className="result-score">
+                    Score: {chunk.score.toFixed(3)}
+                  </span>
+                )}
               </div>
               <p className="result-text">{chunk.text}</p>
             </li>

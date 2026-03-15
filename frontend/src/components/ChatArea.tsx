@@ -1,25 +1,140 @@
-import React, { useState } from "react";
-import { RetrievalMode } from "../services/api";
+import React, { useState, useRef, useEffect } from "react";
+import { RetrievalMode, RetrievedChunk, IngestedDocument } from "../services/api";
+import { parseCitations, TextSegment } from "../utils/citations";
 
 interface ChatAreaProps {
   hasData: boolean;
   retrievalMode: RetrievalMode;
   onRunRetrieval: (query: string) => void | Promise<void>;
+  onChat: (query: string, onStream: (content: string) => void, onChunks: (chunks: RetrievedChunk[]) => void) => Promise<void>;
   hasChatModel: boolean;
+  documents: IngestedDocument[];
+}
+
+interface Message {
+  id: string;
+  type: "user" | "assistant" | "system";
+  content: string;
+  chunks?: RetrievedChunk[];
+  timestamp: Date;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
   hasData,
   retrievalMode,
   onRunRetrieval,
+  onChat,
   hasChatModel,
+  documents,
 }) => {
   const [query, setQuery] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentStreamingContent, setCurrentStreamingContent] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatLogRef = useRef<HTMLDivElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, currentStreamingContent, isProcessing]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasData || !query.trim()) return;
-    onRunRetrieval(query.trim());
+
+    const userQuery = query.trim();
+    setQuery("");
+
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: "user",
+      content: userQuery,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    if (hasChatModel) {
+      // Use chat with streaming
+      setIsProcessing(true);
+      setIsStreaming(true);
+      setCurrentStreamingContent("");
+
+      let chunks: RetrievedChunk[] = [];
+      let finalContent = "";
+
+      try {
+        await onChat(
+          userQuery,
+          (content: string) => {
+            finalContent += content;
+            setCurrentStreamingContent(finalContent);
+            setIsProcessing(false); // Hide loading indicator once content starts streaming
+          },
+          (retrievedChunks: RetrievedChunk[]) => {
+            chunks = retrievedChunks;
+          }
+        );
+
+        // Add assistant message with full content
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: "assistant",
+          content: finalContent,
+          chunks,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        setCurrentStreamingContent("");
+      } finally {
+        setIsStreaming(false);
+        setIsProcessing(false);
+      }
+    } else {
+      // Just run retrieval
+      onRunRetrieval(userQuery);
+    }
+  };
+
+  const handleCitationClick = (label: string, chunks: RetrievedChunk[]) => {
+    // Find the chunk with this label (A=0, B=1, etc.)
+    const index = label.charCodeAt(0) - 65; // A=0, B=1, etc.
+    if (index >= 0 && index < chunks.length) {
+      const chunk = chunks[index];
+      // Find the document
+      const document = documents.find((doc) => doc.id === chunk.documentId);
+      if (document) {
+        // TODO: Open PDF viewer at the relevant page
+        // For now, just log it
+        console.log("Open document:", document.filename, "chunk:", chunk.id);
+        // You can implement PDF viewer here
+        alert(`Would open ${document.filename} for chunk ${label}`);
+      }
+    }
+  };
+
+  const renderMessageContent = (content: string, chunks?: RetrievedChunk[]) => {
+    const segments = parseCitations(content);
+    return (
+      <div className="message-content">
+        {segments.map((segment, idx) => {
+          if (segment.isCitation && segment.citations) {
+            return (
+              <span
+                key={idx}
+                className="citation-link"
+                onClick={() => chunks && handleCitationClick(segment.citations![0], chunks)}
+                title={`Click to view source ${segment.citations[0]}`}
+              >
+                {segment.text}
+              </span>
+            );
+          }
+          return <span key={idx}>{segment.text}</span>;
+        })}
+      </div>
+    );
   };
 
   const retrievalLabel = (() => {
@@ -57,7 +172,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         </div>
       </header>
 
-      <div className="chat-body">
+      <div className="chat-body" ref={chatLogRef}>
         {!hasData ? (
           <div className="empty-state">
             <h3>Upload data to begin</h3>
@@ -69,10 +184,35 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </div>
         ) : (
           <div className="chat-log">
-            <div className="chat-message system-message">
-              Try a question like &ldquo;Summarize the main concepts in my
-              documents&rdquo; to test the hybrid search.
-            </div>
+            {messages.length === 0 && (
+              <div className="chat-message system-message">
+                {hasChatModel
+                  ? "Ask a question to get an AI-powered answer with citations from your documents."
+                  : "Try a question like &ldquo;Summarize the main concepts in my documents&rdquo; to test the hybrid search."}
+              </div>
+            )}
+            {messages.map((message) => (
+              <div key={message.id} className={`chat-message ${message.type}-message`}>
+                {renderMessageContent(message.content, message.chunks)}
+              </div>
+            ))}
+            {isProcessing && !currentStreamingContent && (
+              <div className="loading-indicator">
+                <div className="loading-dots">
+                  <div className="loading-dot"></div>
+                  <div className="loading-dot"></div>
+                  <div className="loading-dot"></div>
+                </div>
+                <span className="loading-text">Processing your request...</span>
+              </div>
+            )}
+            {isStreaming && currentStreamingContent && (
+              <div className="chat-message assistant-message">
+                {renderMessageContent(currentStreamingContent)}
+                <span className="streaming-cursor">▋</span>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>

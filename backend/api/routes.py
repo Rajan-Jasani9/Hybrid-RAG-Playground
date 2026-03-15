@@ -1,3 +1,4 @@
+import json
 from typing import List
 from pathlib import Path
 import shutil
@@ -5,13 +6,15 @@ import uuid
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models.document import Document
 from app.services.ingestion.queue import enqueue_ingestion_task
-from retrieval.base import RetrievalRequest, RetrievalResponse, RetrievalMode
+from app.services.llm.chat import stream_chat_response
+from retrieval.base import RetrievalRequest, RetrievalResponse, RetrievalMode, RetrievedChunk
 from retrieval.vector import semantic_search
 from retrieval.bm25 import keyword_search
 from retrieval.hybrid import hybrid_search
@@ -131,6 +134,91 @@ async def retrieve(
         top_k=body.top_k,
         chunks=chunks,
     )
+
+
+class ChatRequest(BaseModel):
+    query: str
+    model_family: str  # "openai" or "anthropic"
+    model_name: str
+    api_key: str
+    retrieval_mode: RetrievalMode = RetrievalMode.HYBRID
+    top_k: int = 10
+    document_ids: List[str] = None
+
+
+@router.post("/chat")
+async def chat(
+    body: ChatRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Chat endpoint that:
+    1. Retrieves relevant chunks based on the query
+    2. Streams LLM response with citations
+    """
+    if not body.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    
+    if body.model_family not in ["openai", "anthropic"]:
+        raise HTTPException(status_code=400, detail="Model family must be 'openai' or 'anthropic'")
+    
+    if not body.api_key:
+        raise HTTPException(status_code=400, detail="API key is required")
+    
+    # Step 1: Retrieve chunks
+    if body.retrieval_mode == RetrievalMode.SEMANTIC:
+        chunks = await semantic_search(
+            db=db,
+            query=body.query,
+            top_k=body.top_k,
+            document_ids=body.document_ids,
+        )
+    elif body.retrieval_mode == RetrievalMode.KEYWORD:
+        chunks = keyword_search(
+            query=body.query,
+            top_k=body.top_k,
+            document_ids=body.document_ids,
+        )
+    elif body.retrieval_mode == RetrievalMode.HYBRID:
+        chunks = await hybrid_search(
+            db=db,
+            query=body.query,
+            top_k=body.top_k,
+            document_ids=body.document_ids,
+        )
+    elif body.retrieval_mode == RetrievalMode.SEMANTIC_MMR:
+        base_chunks = await semantic_search(
+            db=db,
+            query=body.query,
+            top_k=body.top_k * 3,
+            document_ids=body.document_ids,
+        )
+        chunks = semantic_mmr_rerank(base_chunks, top_k=body.top_k)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported mode: {body.retrieval_mode}")
+    
+    if not chunks:
+        raise HTTPException(status_code=404, detail="No relevant chunks found for the query")
+    
+    # Step 2: Stream LLM response
+    async def generate():
+        # Send chunks info first (only once)
+        chunks_data = [{'chunk_id': c.chunk_id, 'document_id': c.document_id, 'text': c.text} for c in chunks]
+        yield f"data: {json.dumps({'chunks': chunks_data})}\n\n"
+        
+        # Stream content chunks
+        async for chunk in stream_chat_response(
+            model_family=body.model_family,
+            model_name=body.model_name,
+            api_key=body.api_key,
+            query=body.query,
+            chunks=chunks,
+        ):
+            # Send as Server-Sent Events format
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+        yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.post("/ingest/batch")

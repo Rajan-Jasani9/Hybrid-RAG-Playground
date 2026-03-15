@@ -230,14 +230,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </option>
                     </>
                   )}
-                  {selectedModelFamily === "azure-openai" && (
-                    <>
-                      <option value="gpt-4o-mini-azure">gpt-4o-mini (Azure)</option>
-                      <option value="gpt-4.1-mini-azure">
-                        gpt-4.1-mini (Azure)
-                      </option>
-                    </>
-                  )}
                 </select>
                 <p className="field-hint">
                   Only chat-capable models are shown here (no embedding models).

@@ -1,0 +1,231 @@
+# llm/chat.py
+
+import logging
+from typing import List, AsyncIterator
+import json
+
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.anthropic import AnthropicModel
+from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
+
+from retrieval.base import RetrievedChunk
+
+logger = logging.getLogger(__name__)
+
+
+def create_openai_client(model_name: str, api_key: str) -> OpenAIModel:
+    """
+    Create an OpenAI model client with a direct API key.
+    
+    Args:
+        model_name: The OpenAI model name (e.g., 'gpt-4o-mini')
+        api_key: The OpenAI API key
+        
+    Returns:
+        A configured OpenAIModel instance
+    """
+    # Create OpenAI client with the API key
+    openai_client = AsyncOpenAI(api_key=api_key)
+    
+    # Try to use provider if available, otherwise fall back to environment variable approach
+    try:
+        from pydantic_ai.providers.openai import OpenAIProvider
+        provider = OpenAIProvider(openai_client=openai_client)
+        return OpenAIModel(model_name, provider=provider)
+    except ImportError:
+        # Fallback: Use environment variable (less ideal but works)
+        import os
+        original_key = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = api_key
+        try:
+            model = OpenAIModel(model_name)
+            return model
+        finally:
+            # Restore original key if it existed
+            if original_key is not None:
+                os.environ["OPENAI_API_KEY"] = original_key
+            elif "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+
+
+def create_anthropic_client(model_name: str, api_key: str) -> AnthropicModel:
+    """
+    Create an Anthropic model client with a direct API key.
+    
+    Args:
+        model_name: The Anthropic model name (e.g., 'claude-3-5-sonnet-20241022')
+        api_key: The Anthropic API key
+        
+    Returns:
+        A configured AnthropicModel instance
+    """
+    # Create Anthropic client with the API key
+    anthropic_client = AsyncAnthropic(api_key=api_key)
+    
+    # Try to use provider if available, otherwise fall back to environment variable approach
+    try:
+        from pydantic_ai.providers.anthropic import AnthropicProvider
+        provider = AnthropicProvider(anthropic_client=anthropic_client)
+        return AnthropicModel(model_name, provider=provider)
+    except ImportError:
+        # Fallback: Use environment variable (less ideal but works)
+        import os
+        original_key = os.environ.get("ANTHROPIC_API_KEY")
+        os.environ["ANTHROPIC_API_KEY"] = api_key
+        try:
+            model = AnthropicModel(model_name)
+            return model
+        finally:
+            # Restore original key if it existed
+            if original_key is not None:
+                os.environ["ANTHROPIC_API_KEY"] = original_key
+            elif "ANTHROPIC_API_KEY" in os.environ:
+                del os.environ["ANTHROPIC_API_KEY"]
+
+
+def create_chat_agent(model_family: str, model_name: str, api_key: str) -> Agent:
+    """
+    Create a PydanticAI agent for the specified model family and model.
+    
+    Args:
+        model_family: Either 'openai' or 'anthropic'
+        model_name: The specific model name (e.g., 'gpt-4o-mini', 'claude-3-5-sonnet-20241022')
+        api_key: The API key for the model provider
+        
+    Returns:
+        A configured PydanticAI Agent
+    """
+    if model_family == "openai":
+        model = create_openai_client(model_name, api_key)
+    elif model_family == "anthropic":
+        model = create_anthropic_client(model_name, api_key)
+    else:
+        raise ValueError(f"Unsupported model family: {model_family}")
+    
+    system_prompt = build_system_prompt()
+    return Agent(model, system_prompt=system_prompt)
+
+
+def build_context_prompt(chunks: List[RetrievedChunk]) -> str:
+    """
+    Build a context prompt with chunks labeled A, B, C, etc.
+    
+    Args:
+        chunks: List of retrieved chunks
+        
+    Returns:
+        Formatted context string with labeled chunks
+    """
+    if not chunks:
+        return "No context provided."
+    
+    context_parts = []
+    labels = [chr(65 + i) for i in range(len(chunks))]  # A, B, C, ...
+    
+    for label, chunk in zip(labels, chunks):
+        context_parts.append(f"[{label}] {chunk.text}")
+    
+    return "\n\n".join(context_parts)
+
+
+def build_system_prompt() -> str:
+    """
+    Build the system prompt that forces the LLM to only answer from context
+    and use citations.
+    """
+    return """You are a helpful assistant that answers questions based ONLY on the provided context.
+
+IMPORTANT RULES:
+1. You MUST only use information from the provided context to answer the question.
+2. If the context does not contain enough information to answer the question, you must say "I cannot answer this question based on the provided context."
+3. You MUST cite your sources using the format [[X]] where X is the letter label (A, B, C, etc.) of the chunk you are referencing.
+4. Include citations at the end of each sentence or paragraph that uses information from a specific chunk.
+5. You can cite multiple chunks if relevant: [[A]][[B]]
+6. Do not make up information or use knowledge outside the provided context.
+7. If asked about something not in the context, politely decline and explain that the information is not available in the provided documents.
+
+The context chunks are labeled with letters (A, B, C, etc.). Use these labels in your citations."""
+
+
+def _extract_text_from_event(event) -> str:
+    """Helper function to extract text content from various event types."""
+    text_content = None
+    
+    # Try to get text from event.data
+    if hasattr(event, 'data'):
+        data = event.data
+        if isinstance(data, str):
+            text_content = data
+        elif hasattr(data, 'content'):
+            content = data.content
+            if isinstance(content, str):
+                text_content = content
+            elif hasattr(content, 'text'):
+                text_content = content.text
+        elif hasattr(data, 'text'):
+            text_content = data.text
+    
+    # If not found in data, check event directly
+    if not text_content:
+        if isinstance(event, str):
+            text_content = event
+        elif hasattr(event, 'content'):
+            text_content = event.content
+        elif hasattr(event, 'text'):
+            text_content = event.text
+        elif hasattr(event, 'delta') and hasattr(event.delta, 'content'):
+            # Some models use delta.content
+            text_content = event.delta.content
+    
+    return text_content
+
+
+async def stream_chat_response(
+    model_family: str,
+    model_name: str,
+    api_key: str,
+    query: str,
+    chunks: List[RetrievedChunk],
+) -> AsyncIterator[str]:
+    """
+    Stream a chat response from the LLM based on retrieved chunks.
+    
+    Args:
+        model_family: Either 'openai' or 'anthropic'
+        model_name: The specific model name
+        api_key: The API key for the model provider
+        query: The user's question
+        chunks: List of retrieved chunks to use as context
+        
+    Yields:
+        Chunks of the response text as they are generated
+    """
+    try:
+        # Create agent with system prompt
+        agent = create_chat_agent(model_family, model_name, api_key)
+        
+        # Build context with labeled chunks
+        context = build_context_prompt(chunks)
+        
+        # Build user message
+        user_message = f"""Context:
+{context}
+
+Question: {query}
+
+Please answer the question based ONLY on the context provided above. Use citations like [[A]], [[B]], etc. to reference the specific chunks you use."""
+
+        # Stream the response using PydanticAI
+        # PydanticAI's run_stream returns an async context manager that yields StreamedRunResult
+        async with agent.run_stream(user_message) as stream_result:
+            # StreamedRunResult has stream_output() method to get the async iterator
+            async for event in stream_result.stream_output():
+                text_content = _extract_text_from_event(event)
+                if text_content:
+                    yield text_content
+            
+    except Exception as e:
+        logger.error(f"Error streaming chat response: {str(e)}", exc_info=True)
+        yield f"Error: {str(e)}"
