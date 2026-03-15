@@ -104,6 +104,19 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
 
+  const handleClearChat = () => {
+    if (messages.length === 0 && !isStreaming && !isProcessing) return;
+    
+    if (confirm("Are you sure you want to clear the chat history?")) {
+      setMessages([]);
+      setCurrentStreamingContent("");
+      setIsStreaming(false);
+      setIsProcessing(false);
+      setCitationModalOpen(false);
+      setSelectedCitation(null);
+    }
+  };
+
   const handleCitationClick = (label: string, chunks: RetrievedChunk[]) => {
     // Find the chunk with this label (A=0, B=1, etc.)
     const index = label.charCodeAt(0) - 65; // A=0, B=1, etc.
@@ -203,14 +216,26 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             Welcome to RAG - Playground. Please upload data, test retrieval and chat with your data.
           </p>
         </div>
-        <div className="chat-status">
-          <span
-            className={`status-dot ${hasData ? "online" : "offline"}`}
-            aria-hidden="true"
-          />
-          <span className="status-text">
-            {hasData ? "Data available" : "Waiting for uploads"}
-          </span>
+        <div className="chat-header-actions">
+          <button
+            type="button"
+            className="clear-chat-button"
+            onClick={handleClearChat}
+            disabled={messages.length === 0 && !isStreaming && !isProcessing}
+            title="Clear chat history"
+            aria-label="Clear chat history"
+          >
+            Clear Chat
+          </button>
+          <div className="chat-status">
+            <span
+              className={`status-dot ${hasData ? "online" : "offline"}`}
+              aria-hidden="true"
+            />
+            <span className="status-text">
+              {hasData ? "Data available" : "Waiting for uploads"}
+            </span>
+          </div>
         </div>
       </header>
 

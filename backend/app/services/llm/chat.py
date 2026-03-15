@@ -164,36 +164,55 @@ Remember: If you cannot answer from the context, you MUST say "I cannot answer t
 
 
 def _extract_text_from_event(event) -> str:
-    """Helper function to extract text content from various event types."""
-    text_content = None
+    """
+    Helper function to extract incremental text deltas from streaming events.
+    Prioritizes delta content (incremental) over full content (accumulated).
+    """
+    # Priority 1: Check for delta content (incremental text chunks)
+    if hasattr(event, 'delta'):
+        delta = event.delta
+        if hasattr(delta, 'content') and delta.content:
+            return str(delta.content)
+        elif hasattr(delta, 'text') and delta.text:
+            return str(delta.text)
+        elif isinstance(delta, str):
+            return delta
     
-    # Try to get text from event.data
+    # Priority 2: Check event.data for delta
     if hasattr(event, 'data'):
         data = event.data
+        # Check for delta in data
+        if hasattr(data, 'delta'):
+            delta = data.delta
+            if hasattr(delta, 'content') and delta.content:
+                return str(delta.content)
+            elif hasattr(delta, 'text') and delta.text:
+                return str(delta.text)
+        # If no delta, check for direct text content (but this might be accumulated)
         if isinstance(data, str):
-            text_content = data
+            return data
         elif hasattr(data, 'content'):
             content = data.content
             if isinstance(content, str):
-                text_content = content
+                return content
             elif hasattr(content, 'text'):
-                text_content = content.text
+                return str(content.text)
         elif hasattr(data, 'text'):
-            text_content = data.text
+            return str(data.text)
     
-    # If not found in data, check event directly
-    if not text_content:
-        if isinstance(event, str):
-            text_content = event
-        elif hasattr(event, 'content'):
-            text_content = event.content
-        elif hasattr(event, 'text'):
-            text_content = event.text
-        elif hasattr(event, 'delta') and hasattr(event.delta, 'content'):
-            # Some models use delta.content
-            text_content = event.delta.content
+    # Priority 3: Check event directly (fallback)
+    if isinstance(event, str):
+        return event
+    elif hasattr(event, 'content'):
+        content = event.content
+        if isinstance(content, str):
+            return content
+        elif hasattr(content, 'text'):
+            return str(content.text)
+    elif hasattr(event, 'text'):
+        return str(event.text)
     
-    return text_content
+    return None
 
 
 async def stream_chat_response(
@@ -235,10 +254,25 @@ Please answer the question based ONLY on the context provided above. Use citatio
         # PydanticAI's run_stream returns an async context manager that yields StreamedRunResult
         async with agent.run_stream(user_message) as stream_result:
             # StreamedRunResult has stream_output() method to get the async iterator
+            # Track accumulated content to extract only incremental deltas
+            accumulated_text = ""
+            
             async for event in stream_result.stream_output():
                 text_content = _extract_text_from_event(event)
                 if text_content:
-                    yield text_content
+                    # If the extracted content is longer than accumulated, it's the new accumulated text
+                    # Extract only the new delta portion
+                    if len(text_content) > len(accumulated_text) and text_content.startswith(accumulated_text):
+                        # New incremental delta
+                        delta = text_content[len(accumulated_text):]
+                        if delta:
+                            yield delta
+                            accumulated_text = text_content
+                    elif text_content != accumulated_text:
+                        # Different content (might be a delta that doesn't start with accumulated)
+                        # Yield it and update accumulated
+                        yield text_content
+                        accumulated_text = text_content
             
     except Exception as e:
         logger.error(f"Error streaming chat response: {str(e)}", exc_info=True)

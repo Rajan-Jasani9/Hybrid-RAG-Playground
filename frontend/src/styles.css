@@ -1131,3 +1131,34 @@ select.field-input {
 .message-content a:not(.citation-link):hover {
   opacity: 0.8;
 }
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.clear-chat-button {
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.clear-chat-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.clear-chat-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
