@@ -15,52 +15,78 @@ def keyword_search(
 ) -> List[RetrievedChunk]:
     """
     Keyword / BM25 retrieval via Elasticsearch.
+    Returns empty list if Elasticsearch is not available.
     """
+    import logging
+    logger = logging.getLogger(__name__)
 
-    es: Elasticsearch = get_es_client()
+    try:
+        es: Elasticsearch = get_es_client()
+    except Exception as e:
+        logger.warning(f"Elasticsearch not available, skipping BM25 search: {str(e)}")
+        return []
 
-    must_clauses = [
-        {
-            "match": {
-                "text": query,
-            }
-        }
-    ]
-
-    if document_ids:
-        must_clauses.append(
+    try:
+        # Check if index exists before searching
+        if not es.options(request_timeout=10).indices.exists(index=INDEX_NAME):
+            logger.info(f"Elasticsearch index '{INDEX_NAME}' does not exist yet. No documents have been indexed.")
+            return []
+        
+        must_clauses = [
             {
-                "terms": {
-                    "document_id": [str(UUID(did)) for did in document_ids],
+                "match": {
+                    "text": query,
                 }
             }
-        )
+        ]
 
-    body = {
-        "query": {
-            "bool": {
-                "must": must_clauses,
-            }
-        },
-        "size": top_k,
-    }
-
-    resp = es.search(index=INDEX_NAME, body=body)
-    hits = resp.get("hits", {}).get("hits", [])
-
-    results: List[RetrievedChunk] = []
-    for hit in hits:
-        src = hit.get("_source", {})
-        score = float(hit.get("_score", 0.0))
-        results.append(
-            RetrievedChunk(
-                chunk_id=str(src.get("chunk_id")),
-                document_id=str(src.get("document_id")),
-                text=str(src.get("text", "")),
-                score=score,
-                source="bm25",
+        if document_ids:
+            must_clauses.append(
+                {
+                    "terms": {
+                        "document_id": [str(UUID(did)) for did in document_ids],
+                    }
+                }
             )
-        )
 
-    return results
+        body = {
+            "query": {
+                "bool": {
+                    "must": must_clauses,
+                }
+            },
+            "size": top_k,
+        }
+
+        # Use options() for ES 8.x compatibility
+        try:
+            resp = es.options(request_timeout=30).search(index=INDEX_NAME, body=body)
+        except TypeError:
+            # Fallback: ES 8+ might use query parameter instead of body
+            resp = es.options(request_timeout=30).search(index=INDEX_NAME, query=body["query"], size=top_k)
+        hits = resp.get("hits", {}).get("hits", [])
+
+        results: List[RetrievedChunk] = []
+        for hit in hits:
+            src = hit.get("_source", {})
+            score = float(hit.get("_score", 0.0))
+            results.append(
+                RetrievedChunk(
+                    chunk_id=str(src.get("chunk_id")),
+                    document_id=str(src.get("document_id")),
+                    text=str(src.get("text", "")),
+                    score=score,
+                    source="bm25",
+                )
+            )
+
+        return results
+    except Exception as e:
+        # Handle NotFoundError (index doesn't exist) gracefully
+        error_type = type(e).__name__
+        if "NotFoundError" in error_type or "index_not_found" in str(e).lower():
+            logger.info(f"Elasticsearch index '{INDEX_NAME}' does not exist yet. No documents have been indexed.")
+            return []
+        logger.warning(f"Error during BM25 search, returning empty results: {str(e)}")
+        return []
 

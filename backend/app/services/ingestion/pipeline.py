@@ -75,11 +75,22 @@ async def ingest_file_pipeline(
         for chunk in inserted_chunks
     ]
 
-    # 6️⃣ Elastic index
-    index_chunks_to_elasticsearch(
-        document_id=document.id,
-        chunk_records=es_records,
-    )
+    # 6️⃣ Elastic index (non-blocking - if ES fails, still mark as completed)
+    try:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Indexing {len(es_records)} chunks to Elasticsearch for document {document_id}")
+        index_chunks_to_elasticsearch(
+            document_id=document.id,
+            chunk_records=es_records,
+        )
+        logger.info(f"Successfully indexed chunks to Elasticsearch")
+    except Exception as es_error:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Elasticsearch indexing failed for document {document_id}: {str(es_error)}")
+        logger.warning("Continuing with completion - document will be searchable via vector search only")
+        # Don't fail the entire ingestion if ES is unavailable
 
     # 7️⃣ Mark document as completed
     document.status = "completed"

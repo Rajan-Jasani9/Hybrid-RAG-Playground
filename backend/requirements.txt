@@ -1,0 +1,30 @@
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Data Validation & Settings
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+pgvector>=0.2.0
+
+# Database Migrations
+alembic>=1.12.0
+
+# Redis
+redis>=5.0.0
+
+# Elasticsearch
+elasticsearch>=8.10.0
+
+# Machine Learning & Embeddings
+torch>=2.0.0
+transformers>=4.35.0
+
+# Document Parsing
+pypdf>=3.17.0
+python-docx>=1.1.0

@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import traceback
 from pathlib import Path
 from uuid import UUID
 
@@ -6,6 +8,8 @@ from app.db.session import SessionLocal
 from app.db.models.document import Document
 from app.services.ingestion.pipeline import ingest_file_pipeline
 from app.services.ingestion.queue import pop_ingestion_task
+
+logger = logging.getLogger(__name__)
 
 
 async def process_single_task(document_id: str, file_path: str) -> None:
@@ -17,8 +21,10 @@ async def process_single_task(document_id: str, file_path: str) -> None:
             .first()
         )
         if doc is None:
+            logger.warning(f"Document {document_id} not found in database")
             return
 
+        logger.info(f"Processing document {document_id}: {doc.filename}")
         doc.status = "processing"
         db.commit()
 
@@ -27,7 +33,10 @@ async def process_single_task(document_id: str, file_path: str) -> None:
             document_id=UUID(document_id),
             file_path=Path(file_path),
         )
-    except Exception:
+        logger.info(f"Successfully processed document {document_id}")
+    except Exception as e:
+        logger.error(f"Error processing document {document_id}: {str(e)}", exc_info=True)
+        logger.error(f"Traceback: {traceback.format_exc()}")
         # Best-effort: mark document as failed
         try:
             doc = (
@@ -38,8 +47,9 @@ async def process_single_task(document_id: str, file_path: str) -> None:
             if doc is not None:
                 doc.status = "failed"
                 db.commit()
-        except Exception:
-            pass
+                logger.info(f"Marked document {document_id} as failed")
+        except Exception as db_error:
+            logger.error(f"Failed to update document status: {str(db_error)}")
     finally:
         db.close()
 

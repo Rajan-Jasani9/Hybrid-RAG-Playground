@@ -26,6 +26,7 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('filename', sa.String(), nullable=False),
     sa.Column('title', sa.String(), nullable=True),
+    sa.Column('status', sa.String(), nullable=False, server_default='queued'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )

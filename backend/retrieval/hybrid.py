@@ -18,7 +18,10 @@ async def hybrid_search(
     """
     Hybrid retrieval that fuses semantic (pgvector) and keyword (BM25) results
     using Reciprocal Rank Fusion.
+    Falls back to vector-only search if BM25/Elasticsearch is unavailable.
     """
+    import logging
+    logger = logging.getLogger(__name__)
 
     vector_results = await semantic_search(
         db=db,
@@ -33,9 +36,20 @@ async def hybrid_search(
         document_ids=document_ids,
     )
 
+    # If no results from either source, return empty
     if not vector_results and not bm25_results:
         return []
 
+    # If only one source has results, return those (with appropriate source label)
+    if not bm25_results:
+        logger.info("BM25 unavailable, returning vector-only results")
+        return vector_results[:top_k]
+    
+    if not vector_results:
+        logger.info("Vector search returned no results, returning BM25-only results")
+        return bm25_results[:top_k]
+
+    # Both sources have results - fuse them
     # Build rankings for RRF based on rank order only
     vec_ranking = [(r.chunk_id, r.score) for r in vector_results]
     bm25_ranking = [(r.chunk_id, r.score) for r in bm25_results]
