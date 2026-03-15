@@ -75,6 +75,9 @@ async def hybrid_search(
                 text=base.text,
                 score=fused_score,
                 source="hybrid",
+                page_number=base.page_number,
+                token_count=base.token_count,
+                chunk_index=base.chunk_index,
             )
         )
 

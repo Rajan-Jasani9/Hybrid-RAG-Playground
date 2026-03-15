@@ -48,6 +48,9 @@ async def semantic_search(
                 text=row.text,
                 score=1.0,
                 source="vector",
+                page_number=row.page_number,
+                token_count=row.token_count,
+                chunk_index=row.chunk_index,
             )
         )
 

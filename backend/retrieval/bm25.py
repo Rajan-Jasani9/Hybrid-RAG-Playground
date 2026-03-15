@@ -70,6 +70,7 @@ def keyword_search(
         for hit in hits:
             src = hit.get("_source", {})
             score = float(hit.get("_score", 0.0))
+            metadata = src.get("metadata", {})
             results.append(
                 RetrievedChunk(
                     chunk_id=str(src.get("chunk_id")),
@@ -77,6 +78,9 @@ def keyword_search(
                     text=str(src.get("text", "")),
                     score=score,
                     source="bm25",
+                    page_number=src.get("page_number"),
+                    token_count=src.get("token_count"),
+                    chunk_index=src.get("chunk_index"),
                 )
             )
 

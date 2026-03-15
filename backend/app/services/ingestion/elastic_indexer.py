@@ -71,6 +71,8 @@ def ensure_index_exists(es: Elasticsearch):
                     "chunk_id": {"type": "keyword"},
                     "document_id": {"type": "keyword"},
                     "chunk_index": {"type": "integer"},
+                    "page_number": {"type": "integer"},
+                    "token_count": {"type": "integer"},
                     "text": {
                         "type": "text",
                         "analyzer": "standard"
@@ -126,6 +128,8 @@ def index_chunks_to_elasticsearch(
                     "chunk_id": record["chunk_id"],
                     "document_id": str(document_id),
                     "chunk_index": record["chunk_index"],
+                    "page_number": record.get("page_number"),
+                    "token_count": record.get("token_count"),
                     "text": record["text"],
                     "metadata": record.get("metadata"),
                 }

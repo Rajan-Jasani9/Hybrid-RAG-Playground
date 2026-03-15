@@ -39,18 +39,25 @@ async def ingest_file_pipeline(
     if document is None:
         raise ValueError(f"Document {document_id} not found")
 
-    # 1️⃣ Parse file
-    raw_text = parse_file(file_path)
+    # 1️⃣ Parse file (returns ParsedDocument with pages and metadata)
+    parsed_doc = parse_file(file_path)
 
-    # 2️⃣ Chunk
-    chunks = chunk_text(raw_text)
+    # Store document metadata (title, author, etc.)
+    if parsed_doc.metadata:
+        if "title" in parsed_doc.metadata and not document.title:
+            document.title = parsed_doc.metadata["title"]
+        # Store other metadata in a JSONB field if we add one, or keep in memory for now
+        db.commit()
+
+    # 2️⃣ Chunk with page tracking
+    chunks = chunk_text(parsed_doc.text, parsed_doc.pages)
 
     if not chunks:
         document.status = "failed"
         db.commit()
         raise ValueError("No chunks generated from file.")
 
-    # 3️⃣ Vector index (Postgres)
+    # 3️⃣ Vector index (Postgres) with metadata
     await index_chunks_to_vector_db(
         db=db,
         document_id=document.id,
@@ -64,12 +71,14 @@ async def ingest_file_pipeline(
         .all()
     )
 
-    # 5️⃣ Prepare ES records
+    # 5️⃣ Prepare ES records with page_number
     es_records = [
         {
             "chunk_id": str(chunk.id),
             "chunk_index": chunk.chunk_index,
             "text": chunk.text,
+            "page_number": chunk.page_number,
+            "token_count": chunk.token_count,
             "metadata": chunk.other_metadata,
         }
         for chunk in inserted_chunks

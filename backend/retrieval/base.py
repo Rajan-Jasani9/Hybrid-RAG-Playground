@@ -17,6 +17,9 @@ class RetrievedChunk(BaseModel):
     text: str
     score: float
     source: str  # "vector", "bm25", "hybrid"
+    page_number: Optional[int] = None
+    token_count: Optional[int] = None
+    chunk_index: Optional[int] = None
 
 
 class RetrievalRequest(BaseModel):
