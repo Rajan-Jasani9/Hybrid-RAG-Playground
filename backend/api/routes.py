@@ -6,7 +6,7 @@ import uuid
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -484,3 +484,51 @@ def list_documents(
         error_detail = f"{str(e)}\n{traceback.format_exc()}"
         logger.error(f"Error in list_documents: {error_detail}", exc_info=True)
         raise HTTPException(status_code=500, detail=error_detail)
+
+
+@router.get("/documents/{document_id}/file")
+async def get_document_file(
+    document_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Serve the original uploaded file for a document.
+    Useful for PDF viewing in the frontend.
+    """
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Find the file in uploads directory
+        # Files are stored as {file_id}_{filename}
+        import glob
+        pattern = str(UPLOAD_DIR / f"*_{document.filename}")
+        matches = glob.glob(pattern)
+        
+        if not matches:
+            raise HTTPException(status_code=404, detail="File not found on server")
+        
+        file_path = Path(matches[0])
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Determine media type based on file extension
+        media_type_map = {
+            ".pdf": "application/pdf",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc": "application/msword",
+            ".txt": "text/plain",
+        }
+        media_type = media_type_map.get(file_path.suffix.lower(), "application/octet-stream")
+        
+        return FileResponse(
+            path=str(file_path),
+            media_type=media_type,
+            filename=document.filename,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving file for document {document_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

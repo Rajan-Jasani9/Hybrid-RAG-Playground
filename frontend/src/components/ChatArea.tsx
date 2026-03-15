@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { RetrievalMode, RetrievedChunk, IngestedDocument } from "../services/api";
 import { parseCitations, TextSegment } from "../utils/citations";
+import { CitationModal } from "./CitationModal";
 
 interface ChatAreaProps {
   hasData: boolean;
@@ -32,6 +34,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [isStreaming, setIsStreaming] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStreamingContent, setCurrentStreamingContent] = useState("");
+  const [citationModalOpen, setCitationModalOpen] = useState(false);
+  const [selectedCitation, setSelectedCitation] = useState<{
+    chunk: RetrievedChunk;
+    document: IngestedDocument;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
 
@@ -105,34 +112,69 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       // Find the document
       const document = documents.find((doc) => doc.id === chunk.documentId);
       if (document) {
-        // TODO: Open PDF viewer at the relevant page
-        // For now, just log it
-        console.log("Open document:", document.filename, "chunk:", chunk.id);
-        // You can implement PDF viewer here
-        alert(`Would open ${document.filename} for chunk ${label}`);
+        setSelectedCitation({ chunk, document });
+        setCitationModalOpen(true);
       }
     }
   };
 
   const renderMessageContent = (content: string, chunks?: RetrievedChunk[]) => {
+    // Replace citation markers with clickable links, then render as markdown
+    let processedContent = content;
     const segments = parseCitations(content);
+    
+    // Build content with clickable citation links
+    let markdownContent = "";
+    for (const segment of segments) {
+      if (segment.isCitation && segment.citations && chunks) {
+        const label = segment.citations[0];
+        const index = label.charCodeAt(0) - 65;
+        if (index >= 0 && index < chunks.length) {
+          // Replace [[A]] with a clickable markdown link
+          markdownContent += `[${label}](#citation-${label})`;
+        } else {
+          markdownContent += segment.text;
+        }
+      } else {
+        markdownContent += segment.text;
+      }
+    }
+
+    // Create citation click handlers
+    const handleCitationLinkClick = (e: React.MouseEvent, label: string) => {
+      e.preventDefault();
+      if (chunks) {
+        handleCitationClick(label, chunks);
+      }
+    };
+
     return (
       <div className="message-content">
-        {segments.map((segment, idx) => {
-          if (segment.isCitation && segment.citations) {
-            return (
-              <span
-                key={idx}
-                className="citation-link"
-                onClick={() => chunks && handleCitationClick(segment.citations![0], chunks)}
-                title={`Click to view source ${segment.citations[0]}`}
-              >
-                {segment.text}
-              </span>
-            );
-          }
-          return <span key={idx}>{segment.text}</span>;
-        })}
+        <ReactMarkdown
+          components={{
+            a: ({ node, href, children, ...props }) => {
+              // Check if this is a citation link
+              if (href && href.startsWith("#citation-")) {
+                const label = href.replace("#citation-", "");
+                return (
+                  <a
+                    {...props}
+                    href={href}
+                    className="citation-link"
+                    onClick={(e) => handleCitationLinkClick(e, label)}
+                    title={`Click to view source ${label}`}
+                  >
+                    [{label}]
+                  </a>
+                );
+              }
+              // Regular links
+              return <a {...props} href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+            },
+          }}
+        >
+          {markdownContent}
+        </ReactMarkdown>
       </div>
     );
   };
@@ -240,6 +282,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             : `Run ${retrievalLabel}`}
         </button>
       </form>
+
+      <CitationModal
+        open={citationModalOpen}
+        onClose={() => {
+          setCitationModalOpen(false);
+          setSelectedCitation(null);
+        }}
+        chunk={selectedCitation?.chunk || null}
+        document={selectedCitation?.document || null}
+      />
     </section>
   );
 };

@@ -14,6 +14,9 @@ interface BackendRetrievedChunk {
   text: string;
   score: number;
   source: string;
+  page_number?: number;
+  token_count?: number;
+  chunk_index?: number;
 }
 
 interface BackendRetrievalResponse {
@@ -45,6 +48,9 @@ export interface RetrievedChunk {
   documentId: string;
   score?: number;
   text: string;
+  pageNumber?: number;
+  tokenCount?: number;
+  chunkIndex?: number;
 }
 
 export interface IngestedDocument {
@@ -69,6 +75,9 @@ function transformChunk(backendChunk: BackendRetrievedChunk): RetrievedChunk {
     documentId: backendChunk.document_id,
     score: backendChunk.score,
     text: backendChunk.text,
+    pageNumber: backendChunk.page_number,
+    tokenCount: backendChunk.token_count,
+    chunkIndex: backendChunk.chunk_index,
   };
 }
 
