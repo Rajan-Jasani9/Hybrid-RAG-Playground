@@ -65,7 +65,12 @@ def ensure_index_exists(es: Elasticsearch):
             return
 
         logger.info(f"Creating Elasticsearch index '{INDEX_NAME}'")
+        index_settings = {
+            "number_of_shards": 1,
+            "number_of_replicas": 0,
+        }
         mapping = {
+            "settings": index_settings,
             "mappings": {
                 "properties": {
                     "chunk_id": {"type": "keyword"},
@@ -79,12 +84,16 @@ def ensure_index_exists(es: Elasticsearch):
                     },
                     "metadata": {"type": "object"},
                 }
-            }
+            },
         }
 
         # Use the newer API format for ES 8+
         try:
-            es.options(request_timeout=10).indices.create(index=INDEX_NAME, mappings=mapping["mappings"])
+            es.options(request_timeout=10).indices.create(
+                index=INDEX_NAME,
+                settings=index_settings,
+                mappings=mapping["mappings"],
+            )
         except TypeError:
             # Fallback to older API format
             es.options(request_timeout=10).indices.create(index=INDEX_NAME, body=mapping)
