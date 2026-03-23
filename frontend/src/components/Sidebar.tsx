@@ -207,7 +207,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <option value="">Select a model family</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
-                  <option value="azure-openai">Azure OpenAI</option>
                 </select>
               </div>
 
@@ -266,6 +265,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 />
                 <p className="field-hint">
                   Used only when running chat over retrieved chunks.
+                </p>
+                <p className="panel-warning">
+                  We DO NOT store any API keys.
                 </p>
               </div>
             </div>

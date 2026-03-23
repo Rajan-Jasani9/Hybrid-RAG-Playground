@@ -1,7 +1,6 @@
 import json
-from typing import List
+from typing import List, Optional
 from pathlib import Path
-import shutil
 import uuid
 import logging
 
@@ -41,6 +40,44 @@ class DocumentListResponse(BaseModel):
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+MAX_UPLOAD_BYTES_PER_FILE = 5 * 1024 * 1024  # 5MB
+
+
+def _get_uploadfile_size(upload_file: UploadFile) -> Optional[int]:
+    """
+    Best-effort size check for Starlette UploadFile.
+    If the underlying file is seekable, we use it to get the size without reading.
+    """
+    try:
+        file_obj = upload_file.file
+        current_pos = file_obj.tell()
+        file_obj.seek(0, 2)
+        size = file_obj.tell()
+        file_obj.seek(current_pos)
+        return int(size)
+    except Exception:
+        return None
+
+
+def _copy_uploadfile_limited(upload_file: UploadFile, dst_file, max_bytes: int) -> None:
+    """
+    Copy upload data while enforcing a hard per-file size limit.
+    Raises HTTP 413 as soon as the limit is exceeded.
+    """
+    bytes_written = 0
+    chunk_size = 1024 * 1024  # 1MB
+    while True:
+        chunk = upload_file.file.read(chunk_size)
+        if not chunk:
+            break
+        bytes_written += len(chunk)
+        if bytes_written > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File {upload_file.filename} exceeds 5MB limit",
+            )
+        dst_file.write(chunk)
+
 
 @router.post("/ingest")
 async def ingest_file(
@@ -50,12 +87,21 @@ async def ingest_file(
     """
     Ingest a single file into the Hybrid RAG pipeline.
     """
+    file_path: Optional[Path] = None
     try:
+        file_size = _get_uploadfile_size(file)
+        if file_size is not None and file_size > MAX_UPLOAD_BYTES_PER_FILE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File {file.filename} exceeds 5MB limit",
+            )
+
         file_id = uuid.uuid4()
         file_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
 
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            # Enforce a hard limit while copying.
+            _copy_uploadfile_limited(file, buffer, MAX_UPLOAD_BYTES_PER_FILE)
 
         # Create document in DB with queued status
         document = Document(
@@ -78,6 +124,14 @@ async def ingest_file(
             "status": document.status,
         }
 
+    except HTTPException:
+        # If we already started writing, ensure we don't leave a partial upload behind.
+        if file_path is not None and file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -238,6 +292,21 @@ async def ingest_files_batch(
         logger.warning("No files provided in batch upload request")
         raise HTTPException(status_code=400, detail="No files uploaded")
 
+    # Best-effort pre-check to fail fast (when the file is seekable).
+    oversized_files: List[str] = []
+    for f in files:
+        size = _get_uploadfile_size(f)
+        if size is not None and size > MAX_UPLOAD_BYTES_PER_FILE:
+            oversized_files.append(f.filename)
+
+    if oversized_files:
+        first_names = oversized_files[:3]
+        suffix = ", ..." if len(oversized_files) > 3 else ""
+        raise HTTPException(
+            status_code=413,
+            detail=f"One or more files exceed 5MB limit: {', '.join(first_names)}{suffix}",
+        )
+
     results = []
 
     try:
@@ -246,12 +315,13 @@ async def ingest_files_batch(
             logger.info(f"Processing file {idx + 1}/{len(files)}: {file.filename}")
             
             try:
+                file_path: Optional[Path] = None
                 file_id = uuid.uuid4()
                 file_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
                 logger.info(f"Created file path: {file_path}")
 
                 with open(file_path, "wb") as buffer:
-                    shutil.copyfileobj(file.file, buffer)
+                    _copy_uploadfile_limited(file, buffer, MAX_UPLOAD_BYTES_PER_FILE)
                 logger.info(f"File saved to disk: {file_path}")
 
                 logger.info("Creating Document model instance")
@@ -289,6 +359,16 @@ async def ingest_files_batch(
                 
             except Exception as file_error:
                 logger.error(f"Error processing file {file.filename}: {str(file_error)}", exc_info=True)
+                # If the file exceeded size (or we partially wrote it), cleanup any partial file.
+                if (
+                    isinstance(file_error, HTTPException)
+                    and file_path is not None
+                    and file_path.exists()
+                ):
+                    try:
+                        file_path.unlink()
+                    except Exception:
+                        pass
                 raise
 
         logger.info(f"Batch upload completed successfully. Processed {len(results)} files")

@@ -12,20 +12,24 @@ import {
 import { useMediaQuery } from "./hooks/useMediaQuery";
 
 const MOBILE_QUERY = "(max-width: 767px)";
+const MAX_UPLOAD_BYTES_PER_FILE = 5 * 1024 * 1024; // 5MB
 
 const Playground: React.FC = () => {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hasData, setHasData] = useState(false);
   const [selectedModelFamily, setSelectedModelFamily] = useState<string>(() => {
-    return localStorage.getItem("rag_model_family") || "";
+    const family = localStorage.getItem("rag_model_family") || "";
+    // Azure OpenAI is intentionally hidden; clear any stale persisted value.
+    return family === "azure-openai" ? "" : family;
   });
   const [selectedModel, setSelectedModel] = useState<string>(() => {
+    const family = localStorage.getItem("rag_model_family") || "";
+    if (family === "azure-openai") return "";
     return localStorage.getItem("rag_model_name") || "";
   });
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return localStorage.getItem("rag_api_key") || "";
-  });
+  // API keys must not be persisted.
+  const [apiKey, setApiKey] = useState<string>("");
   const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>("hybrid");
   const [chunks, setChunks] = useState<RetrievedChunk[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -35,12 +39,9 @@ const Playground: React.FC = () => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
-    if (apiKey) {
-      localStorage.setItem("rag_api_key", apiKey);
-    } else {
-      localStorage.removeItem("rag_api_key");
-    }
-  }, [apiKey]);
+    // Clear any previously-stored key (from older versions).
+    localStorage.removeItem("rag_api_key");
+  }, []);
 
   useEffect(() => {
     if (selectedModelFamily) {
@@ -123,6 +124,23 @@ const Playground: React.FC = () => {
 
   const handleFilesUploaded = async (files: FileList | null) => {
     if (!files || files.length === 0 || isUploading) return;
+
+    const fileArray = Array.from(files);
+    const oversizedFiles = fileArray.filter(
+      (file) => file.size > MAX_UPLOAD_BYTES_PER_FILE
+    );
+    if (oversizedFiles.length > 0) {
+      const firstNames = oversizedFiles
+        .slice(0, 3)
+        .map((f) => f.name)
+        .join(", ");
+      const suffix = oversizedFiles.length > 3 ? ", ..." : "";
+      addToast(
+        `Each file must be <= 5MB. Oversized file(s): ${firstNames}${suffix}`,
+        "error"
+      );
+      return;
+    }
 
     try {
       setIsUploading(true);
