@@ -29,7 +29,6 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - xpack.ml.enabled=false
-      - xpack.monitoring.enabled=false
       - "ES_JAVA_OPTS=-Xms192m -Xmx192m"
     ulimits:
       memlock:
