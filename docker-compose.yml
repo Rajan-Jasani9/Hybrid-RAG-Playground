@@ -30,7 +30,7 @@ services:
       - xpack.security.enabled=false
       - xpack.ml.enabled=false
       - xpack.monitoring.enabled=false
-      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+      - "ES_JAVA_OPTS=-Xms192m -Xmx192m"
     ulimits:
       memlock:
         soft: -1
