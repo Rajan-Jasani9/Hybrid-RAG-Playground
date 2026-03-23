@@ -8,7 +8,8 @@ import { CitationModal } from "./CitationModal";
 interface ChatAreaProps {
   hasData: boolean;
   retrievalMode: RetrievalMode;
-  onRunRetrieval: (query: string) => void | Promise<void>;
+  onRunRetrieval: (query: string) => Promise<RetrievedChunk[]>;
+  onOpenRetrievalDrawer: (chunks: RetrievedChunk[]) => void;
   onChat: (query: string, onStream: (content: string) => void, onChunks: (chunks: RetrievedChunk[]) => void) => Promise<void>;
   hasChatModel: boolean;
   documents: IngestedDocument[];
@@ -21,6 +22,8 @@ interface Message {
   type: "user" | "assistant" | "system";
   content: string;
   chunks?: RetrievedChunk[];
+  /** Retrieval-only run: show a control to open the right drawer for this result */
+  retrievalOnly?: boolean;
   timestamp: Date;
 }
 
@@ -28,6 +31,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   hasData,
   retrievalMode,
   onRunRetrieval,
+  onOpenRetrievalDrawer,
   onChat,
   hasChatModel,
   documents,
@@ -104,8 +108,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         setIsProcessing(false);
       }
     } else {
-      // Just run retrieval
-      onRunRetrieval(userQuery);
+      setIsProcessing(true);
+      try {
+        const chunks = await onRunRetrieval(userQuery);
+        const retrievalMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: "assistant",
+          content: "",
+          chunks,
+          retrievalOnly: true,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, retrievalMessage]);
+      } catch {
+        // Parent toasts; no assistant row on failure
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -276,8 +295,40 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               </div>
             )}
             {messages.map((message) => (
-              <div key={message.id} className={`chat-message ${message.type}-message`}>
-                {renderMessageContent(message.content, message.chunks)}
+              <div
+                key={message.id}
+                className={`chat-message ${message.type}-message${
+                  message.retrievalOnly ? " retrieval-only-message" : ""
+                }`}
+              >
+                {message.retrievalOnly ? (
+                  <div className="retrieval-only-body">
+                    {message.chunks && message.chunks.length > 0 ? (
+                      <>
+                        <p className="retrieval-only-summary">
+                          Retrieved {message.chunks.length} chunk
+                          {message.chunks.length === 1 ? "" : "s"} for this
+                          query.
+                        </p>
+                        <button
+                          type="button"
+                          className="retrieval-open-drawer-button"
+                          onClick={() =>
+                            onOpenRetrievalDrawer(message.chunks!)
+                          }
+                        >
+                          View retrieved chunks
+                        </button>
+                      </>
+                    ) : (
+                      <p className="retrieval-only-empty">
+                        No chunks matched this query.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  renderMessageContent(message.content, message.chunks)
+                )}
               </div>
             ))}
             {isProcessing && !currentStreamingContent && (

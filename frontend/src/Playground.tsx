@@ -175,27 +175,29 @@ const Playground: React.FC = () => {
     }
   };
 
-  const handleRunRetrieval = async (query: string) => {
-    if (!query.trim()) return;
+  const handleRunRetrieval = async (
+    query: string
+  ): Promise<RetrievedChunk[]> => {
+    if (!query.trim()) return [];
 
     if (selectedModelFamily && selectedModel && apiKey) {
-      return;
+      return [];
     }
 
     try {
-      const retrievedChunks = await apiService.retrieve(
-        query,
-        retrievalMode,
-        10
-      );
-      setChunks(retrievedChunks);
-      setIsDrawerOpen(true);
-      if (isMobile) {
-        setSidebarOpen(false);
-      }
+      return await apiService.retrieve(query, retrievalMode, 10);
     } catch (err) {
       console.error("Error running retrieval", err);
       addToast("Retrieval failed", "error");
+      throw err;
+    }
+  };
+
+  const handleOpenRetrievalDrawer = (retrievedChunks: RetrievedChunk[]) => {
+    setChunks(retrievedChunks);
+    setIsDrawerOpen(true);
+    if (isMobile) {
+      setSidebarOpen(false);
     }
   };
 
@@ -283,6 +285,7 @@ const Playground: React.FC = () => {
           hasData={hasData}
           retrievalMode={retrievalMode}
           onRunRetrieval={handleRunRetrieval}
+          onOpenRetrievalDrawer={handleOpenRetrievalDrawer}
           onChat={handleChat}
           hasChatModel={Boolean(
             selectedModelFamily && selectedModel && apiKey
