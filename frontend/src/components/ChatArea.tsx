@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { Menu } from "lucide-react";
 import { RetrievalMode, RetrievedChunk, IngestedDocument } from "../services/api";
-import { parseCitations, TextSegment } from "../utils/citations";
+import { parseCitations } from "../utils/citations";
 import { CitationModal } from "./CitationModal";
 
 interface ChatAreaProps {
@@ -11,6 +12,8 @@ interface ChatAreaProps {
   onChat: (query: string, onStream: (content: string) => void, onChunks: (chunks: RetrievedChunk[]) => void) => Promise<void>;
   hasChatModel: boolean;
   documents: IngestedDocument[];
+  isMobile?: boolean;
+  onOpenSidebar?: () => void;
 }
 
 interface Message {
@@ -28,6 +31,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onChat,
   hasChatModel,
   documents,
+  isMobile,
+  onOpenSidebar,
 }) => {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -210,11 +215,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   return (
     <section className="chat-area">
       <header className="chat-header">
-        <div>
-          <h2 className="chat-title">RAG Playground</h2>
-          <p className="chat-subtitle">
-            Welcome to RAG - Playground. Please upload data, test retrieval and chat with your data.
-          </p>
+        <div className="chat-header-lead">
+          {isMobile && onOpenSidebar && (
+            <button
+              type="button"
+              className="chat-menu-button"
+              onClick={onOpenSidebar}
+              aria-label="Open data and configuration menu"
+            >
+              <Menu size={22} strokeWidth={2} aria-hidden />
+            </button>
+          )}
+          <div className="chat-header-titles">
+            <h2 className="chat-title">RAG Playground</h2>
+            <p className="chat-subtitle">
+              Welcome to RAG - Playground. Please upload data, test retrieval and chat with your data.
+            </p>
+          </div>
         </div>
         <div className="chat-header-actions">
           <button
@@ -255,7 +272,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <div className="chat-message system-message">
                 {hasChatModel
                   ? "Ask a question to get an AI-powered answer with citations from your documents."
-                  : "Try a question like &ldquo;Summarize the main concepts in my documents&rdquo; to test the hybrid search."}
+                  : "Try a question like \u201cSummarize the main concepts in my documents\u201d to test the hybrid search."}
               </div>
             )}
             {messages.map((message) => (

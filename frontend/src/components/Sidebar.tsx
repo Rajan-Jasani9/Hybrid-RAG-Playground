@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Microscope } from "lucide-react";
+import { Microscope, X } from "lucide-react";
 import { RetrievalMode, IngestedDocument } from "../services/api";
 
 interface SidebarProps {
@@ -17,6 +17,8 @@ interface SidebarProps {
   onChangeRetrievalMode: (mode: RetrievalMode) => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  isMobile?: boolean;
+  onCloseMobile?: () => void;
 }
 
 type Tab = "data" | "config";
@@ -36,6 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onChangeRetrievalMode,
   theme,
   onToggleTheme,
+  isMobile,
+  onCloseMobile,
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>("data");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,12 +60,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1 className="sidebar-title">
-          <span className="sidebar-logo">
-            <Microscope size={18} strokeWidth={2} />
-          </span>
-          <span>RAG Playground</span>
-        </h1>
+        <div className="sidebar-header-row">
+          <h1 className="sidebar-title">
+            <span className="sidebar-logo">
+              <Microscope size={18} strokeWidth={2} />
+            </span>
+            <span>RAG Playground</span>
+          </h1>
+          {isMobile && onCloseMobile && (
+            <button
+              type="button"
+              className="sidebar-close-mobile icon-button icon-button-lg"
+              onClick={onCloseMobile}
+              aria-label="Close menu"
+            >
+              <X size={18} strokeWidth={2} />
+            </button>
+          )}
+        </div>
         <p className="sidebar-subtitle">Data &amp; Configuration</p>
       </div>
 
